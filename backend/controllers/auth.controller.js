@@ -2,7 +2,7 @@ import { User } from "../models/user.model.js";
 import bcryptjs from "bcryptjs";
 import { generateVerificationCode } from "../utils/generateVerificationCode.js";
 import { generateTokenAndSetCookie } from "../utils/generateTokenAndSetCookie.js";
-import { sendVerificationEmail } from "../mailtrap/emails.js";
+import { sendVerificationEmail, sendWelcomeEmail } from "../mailtrap/emails.js";
 
 export const signup = async (req, res) => {
   const { name, email, password } = req.body;
@@ -23,11 +23,12 @@ export const signup = async (req, res) => {
       verificationToken,
       verificationTokenExpiresAt: Date.now() + 24 * 60 * 60 * 1000, //24 hours
     });
-    await user.save();
     //jwt method which is also setting the cookie
     generateTokenAndSetCookie(res, user._id);
     //sending verification email
     await sendVerificationEmail(user.email, verificationToken);
+    // saving the user to the database
+    await user.save();
     res
       .status(201)
       .json({
@@ -40,10 +41,51 @@ export const signup = async (req, res) => {
   }
 };
 
+export const verifyEmail = async (req, res) => {
+  //some kind of ui for entering the verification code
+  const { code } = req.body;
+  try {
+    const user = await User.findOne({
+      verificationToken: code, //finding user by the verification_token 
+      verificationTokenExpiresAt: { $gt: Date.now() } //just to verify that the token is not expired
+    })
+    if (!user) {
+      return res.status(400).json({success: false, message: 'Invalid or expired verification token'})
+    }
+    user.isVerified = true;
+    user.verificationToken = undefined; //deleting the value after the user is varified
+    user.verificationTokenExpiresAt = undefined; //deleting the value after the user is verified
+    await user.save();
+
+    await sendWelcomeEmail(user.email, user.name);
+
+    res.status(200).json({
+      success: true, 
+      message: 'User verified successfully',
+      user: {
+        ...user._doc,
+        password: undefined
+      }
+    })
+  } catch (error) {
+    console.log("Error is verification email", error.message)
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    })
+  }
+}
 export const login = async (req, res) => {
   res.send("login route");
 };
 
 export const logout = async (req, res) => {
-  res.send("logout route");
+  //clear out the cookies so that we know that the user is unauthenticated
+  //the cookie name is token
+  res.clearCookie("token");
+  res.status(200).json({
+    success: true,
+    message: "Logged out successfully"
+  })
 };
+
