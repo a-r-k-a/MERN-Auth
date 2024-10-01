@@ -1,8 +1,10 @@
-import { User } from "../models/user.model.js";
 import bcryptjs from "bcryptjs";
+import crypto from "crypto";
+
+import { User } from "../models/user.model.js";
 import { generateVerificationCode } from "../utils/generateVerificationCode.js";
 import { generateTokenAndSetCookie } from "../utils/generateTokenAndSetCookie.js";
-import { sendVerificationEmail, sendWelcomeEmail } from "../mailtrap/emails.js";
+import { sendResetPasswordEmail, sendVerificationEmail, sendWelcomeEmail } from "../mailtrap/emails.js";
 
 export const signup = async (req, res) => {
   const { name, email, password } = req.body;
@@ -29,13 +31,11 @@ export const signup = async (req, res) => {
     await sendVerificationEmail(user.email, verificationToken);
     // saving the user to the database
     await user.save();
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: "User created successfully",
-        user: { ...user._doc, password: null }, //spreading the properties of the created user but the password is set as null
-      });
+    res.status(201).json({
+      success: true,
+      message: "User created successfully",
+      user: { ...user._doc, password: null }, //spreading the properties of the created user but the password is set as null
+    });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -46,11 +46,16 @@ export const verifyEmail = async (req, res) => {
   const { code } = req.body;
   try {
     const user = await User.findOne({
-      verificationToken: code, //finding user by the verification_token 
-      verificationTokenExpiresAt: { $gt: Date.now() } //just to verify that the token is not expired
-    })
+      verificationToken: code, //finding user by the verification_token
+      verificationTokenExpiresAt: { $gt: Date.now() }, //just to verify that the token is not expired
+    });
     if (!user) {
-      return res.status(400).json({success: false, message: 'Invalid or expired verification token'})
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Invalid or expired verification token",
+        });
     }
     user.isVerified = true;
     user.verificationToken = undefined; //deleting the value after the user is varified
@@ -60,32 +65,39 @@ export const verifyEmail = async (req, res) => {
     await sendWelcomeEmail(user.email, user.name);
 
     res.status(200).json({
-      success: true, 
-      message: 'User verified successfully',
+      success: true,
+      message: "User verified successfully",
       user: {
         ...user._doc,
-        password: undefined
-      }
-    })
+        password: undefined,
+      },
+    });
   } catch (error) {
-    console.log("Error is verification email", error.message)
+    console.log("Error is verification email", error.message);
     return res.status(500).json({
       success: false,
-      message: "Internal server error"
-    })
+      message: "Internal server error",
+    });
   }
-}
+};
+
 export const login = async (req, res) => {
-  const {email, password} = req.body;
+  const { email, password } = req.body;
   try {
-    const user = await  User.findOne({ email }); //finding the user through the email provided in the request body
-    if (!user) { //if the user does not exist
-      return res.status(400).json({ success: false, message: 'Invalid credentials' })
+    const user = await User.findOne({ email }); //finding the user through the email provided in the request body
+    if (!user) {
+      //if the user does not exist
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid credentials" });
     }
     //comparing the password
     const isPasswordValid = await bcryptjs.compare(password, user.password);
-    if (!isPasswordValid) { //if the password does not match
-      return res.status(400).json({ success: false, message: 'Invalid credentials' })
+    if (!isPasswordValid) {
+      //if the password does not match
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid credentials" });
     }
     generateTokenAndSetCookie(res, user._id); //generate token and cookie for user login
 
@@ -97,14 +109,14 @@ export const login = async (req, res) => {
       user: {
         ...user._doc,
         password: undefined,
-      }
-    })
+      },
+    });
   } catch (error) {
     console.log("Error logging in", error.message);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error'
-    })
+      message: "Internal server error",
+    });
   }
 };
 
@@ -114,7 +126,37 @@ export const logout = async (req, res) => {
   res.clearCookie("token");
   res.status(200).json({
     success: true,
-    message: "Logged out successfully"
-  })
+    message: "Logged out successfully",
+  });
 };
 
+export const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: "User not found" });
+    }
+    //generate reset token
+    const resetToken = crypto.randomBytes(20).toString("hex");
+    const resetTokenExpiresAt = Date.now() + 1 * 60 * 60 * 1000; //expiration of the token set to 1 hour
+
+    //storing the token in the database
+    user.resetPasswordToken = resetToken;
+    user.resretPasswordExpiresAt = resetTokenExpiresAt;
+
+    await user.save();
+
+    //send email
+    await sendResetPasswordEmail(user.email, `${process.env.CLIENT_URL}/reset-password/${resetToken}`);
+
+    return res.status(200).json({success: true, message: 'Password reset mail sent successfully'})
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({succes: false, message: 'Internal server error'});
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  
+};
