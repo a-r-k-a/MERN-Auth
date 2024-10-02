@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { User } from "../models/user.model.js";
 import { generateVerificationCode } from "../utils/generateVerificationCode.js";
 import { generateTokenAndSetCookie } from "../utils/generateTokenAndSetCookie.js";
-import { sendResetPasswordEmail, sendVerificationEmail, sendWelcomeEmail } from "../mailtrap/emails.js";
+import { sendResetPasswordEmail, sendVerificationEmail, sendWelcomeEmail, sendResetSuccessEmail } from "../mailtrap/emails.js";
 
 export const signup = async (req, res) => {
   const { name, email, password } = req.body;
@@ -158,5 +158,29 @@ export const forgotPassword = async (req, res) => {
 };
 
 export const resetPassword = async (req, res) => {
-  
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resretPasswordExpiresAt: { $gt: Date.now() },
+    });
+    if (!user) {
+      return res.status(400).json({success: false, message: 'Invalid or expired reset token'});
+    }
+    //update password
+    const hashedPassword = await bcryptjs.hash(password, 10);
+    user.password = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resretPasswordExpiresAt = undefined;
+    await user.save();
+
+    //send password reset email
+    await sendResetSuccessEmail(user.email);
+
+    return res.status(200).json({success: true, message: 'Password reset successful'})
+  } catch (error) {
+    console.log("Could not reset password", error);
+    return res.status(500).json({success: false, message: 'Internal server error'})
+  }
 };

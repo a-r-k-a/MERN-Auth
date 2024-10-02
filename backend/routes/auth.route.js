@@ -18,7 +18,7 @@ router.post('/verify-email', verifyEmail);
 //route for forget password
 router.post('/forgot-password', forgotPassword);
 
-//route for resetting the password
-router.post('/reset-password', resetPassword);
+//route for resetting the password (when clicked on Reset Password button in the forget password mail)
+router.post('/reset-password/:token', resetPassword);
 
 export default router;
