@@ -1,5 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
 
 import { connectDB } from "../db/connectDB.js";
 
@@ -10,6 +11,7 @@ dotenv.config();
 const app = express();
 
 app.use(express.json()); //allows us to parse incoming requests:req.body
+app.use(cookieParser()); //allows us to pass incoming cookies
 
 app.use('/api/auth', authRoutes);
 

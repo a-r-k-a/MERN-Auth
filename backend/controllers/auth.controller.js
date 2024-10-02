@@ -184,3 +184,17 @@ export const resetPassword = async (req, res) => {
     return res.status(500).json({success: false, message: 'Internal server error'})
   }
 };
+
+export const checkAuth = async (req, res) => {
+  try {
+    //we will have the user id in the request
+    const user = await User.findById(req.userId).select("-password");
+    if (!user) {
+      return res.status(400).json({success: false, message: "User not found"})
+    }
+    res.status(200).json({success: true, user});
+  } catch (error) {
+    console.log("Authentication failed: ", error);
+    return res.status(500).json({success: false, message: 'Internal server error'})
+  }
+}
